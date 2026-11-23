@@ -1,0 +1,18 @@
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+.DS_Store
+captures/
+.kotlin/
+
+# Personal backgrounds never belong in the repository
+background.jpg
+background.jpeg
+background.png
+background.webp
+background.mp4
+*.mp4
+*.mov
+*.heic
