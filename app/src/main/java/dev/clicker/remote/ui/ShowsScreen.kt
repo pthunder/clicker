@@ -145,6 +145,8 @@ fun ShowsScreen(controller: RemoteController) {
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             FilterChip(selected = newOnly, onClick = { newOnly = !newOnly }, label = { Text("What's new") })
+            // Trending lives on the Add screen (empty search); this chip is the short way there.
+            FilterChip(selected = false, onClick = { searching = true }, label = { Text("Trending") })
             if (people.isNotEmpty()) {
                 (listOf<String?>(null) + people).forEach { name ->
                     FilterChip(
@@ -418,7 +420,7 @@ private fun SearchPanel(
                 value = query,
                 onValueChange = { query = it },
                 modifier = Modifier.weight(1f).focusRequester(focus),
-                placeholder = { Text(if (person != null) "Add to $person's shows" else "Search for a show") },
+                placeholder = { Text(if (person != null) "Add to $person's shows" else "Search, or browse trending") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = { keyboard?.hide() }),

@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 440" font-family="-apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif">
+  <title>How Clicker tracks shows across streaming apps</title>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#8AB4F8"/>
+    </marker>
+  </defs>
+  <rect width="880" height="440" rx="18" fill="#111316"/>
+
+  <!-- Sources -->
+  <text x="40" y="44" fill="#9AA0A6" font-size="13" font-weight="700" letter-spacing="1">WHERE THE FACTS COME FROM</text>
+  <rect x="40" y="62" width="230" height="88" rx="14" fill="#22262C"/>
+  <text x="58" y="94" fill="#FFFFFF" font-size="17" font-weight="700">TVmaze</text>
+  <text x="58" y="118" fill="#C9CDD2" font-size="13">air dates, seasons, episodes,</text>
+  <text x="58" y="136" fill="#C9CDD2" font-size="13">posters (free, no key)</text>
+
+  <rect x="40" y="166" width="230" height="88" rx="14" fill="#22262C"/>
+  <text x="58" y="198" fill="#FFFFFF" font-size="17" font-weight="700">TMDB + JustWatch</text>
+  <text x="58" y="222" fill="#C9CDD2" font-size="13">what's trending this week,</text>
+  <text x="58" y="240" fill="#C9CDD2" font-size="13">which service streams it</text>
+
+  <rect x="40" y="270" width="230" height="88" rx="14" fill="#22262C"/>
+  <text x="58" y="302" fill="#FFFFFF" font-size="17" font-weight="700">You</text>
+  <text x="58" y="326" fill="#C9CDD2" font-size="13">follow, tick off episodes,</text>
+  <text x="58" y="344" fill="#C9CDD2" font-size="13">snooze, per-person lists</text>
+
+  <!-- Arrows into the list -->
+  <path d="M272 106 C 315 106, 315 190, 352 200" fill="none" stroke="#8AB4F8" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <path d="M272 210 L 350 210" fill="none" stroke="#8AB4F8" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <path d="M272 314 C 315 314, 315 230, 352 220" fill="none" stroke="#8AB4F8" stroke-width="2.5" marker-end="url(#arrow)"/>
+
+  <!-- The list -->
+  <text x="360" y="44" fill="#9AA0A6" font-size="13" font-weight="700" letter-spacing="1">ONE LIST ON THE REMOTE</text>
+  <rect x="360" y="62" width="250" height="296" rx="16" fill="#1B2028" stroke="#2B3442"/>
+  <rect x="376" y="80" width="218" height="58" rx="10" fill="#2B3442"/>
+  <text x="390" y="104" fill="#FFD54F" font-size="12" font-weight="700">NEW TO WATCH</text>
+  <text x="390" y="126" fill="#FFFFFF" font-size="13">Season 3 is out · Prime Video</text>
+  <rect x="376" y="148" width="218" height="58" rx="10" fill="#22262C"/>
+  <text x="390" y="172" fill="#C9CDD2" font-size="12" font-weight="700">COMING SOON</text>
+  <text x="390" y="194" fill="#FFFFFF" font-size="13">S9 E8 · Monday · Paramount+</text>
+  <rect x="376" y="216" width="218" height="58" rx="10" fill="#22262C"/>
+  <text x="390" y="240" fill="#C9CDD2" font-size="12" font-weight="700">CAUGHT UP</text>
+  <text x="390" y="262" fill="#FFFFFF" font-size="13">tucked away until news</text>
+  <rect x="376" y="284" width="218" height="58" rx="10" fill="#22262C"/>
+  <text x="390" y="308" fill="#C9CDD2" font-size="12" font-weight="700">SNOOZED</text>
+  <text x="390" y="330" fill="#FFFFFF" font-size="13">wakes when a season is set</text>
+
+  <!-- Arrow to apps -->
+  <path d="M612 210 L 668 210" fill="none" stroke="#8AB4F8" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <text x="614" y="196" fill="#9AA0A6" font-size="12">one tap</text>
+
+  <!-- Apps -->
+  <text x="672" y="44" fill="#9AA0A6" font-size="13" font-weight="700" letter-spacing="1">OPENS THE RIGHT APP</text>
+  <g font-size="14" font-weight="600" fill="#FFFFFF">
+    <rect x="672" y="62" width="168" height="34" rx="9" fill="#22262C"/><text x="688" y="84">Netflix</text>
+    <rect x="672" y="104" width="168" height="34" rx="9" fill="#22262C"/><text x="688" y="126">Prime Video</text>
+    <rect x="672" y="146" width="168" height="34" rx="9" fill="#22262C"/><text x="688" y="168">Hulu</text>
+    <rect x="672" y="188" width="168" height="34" rx="9" fill="#22262C"/><text x="688" y="210">Peacock</text>
+    <rect x="672" y="230" width="168" height="34" rx="9" fill="#22262C"/><text x="688" y="252">Paramount+</text>
+    <rect x="672" y="272" width="168" height="34" rx="9" fill="#22262C"/><text x="688" y="294">HBO Max · Disney+</text>
+    <rect x="672" y="314" width="168" height="34" rx="9" fill="#22262C"/><text x="688" y="336">Apple TV · Spectrum</text>
+  </g>
+
+  <text x="40" y="396" fill="#9AA0A6" font-size="12">Broadcast and cable shows map to the service that carries them (NBC → Peacock, CBS → Paramount+,</text>
+  <text x="40" y="414" fill="#9AA0A6" font-size="12">ABC/FX → Hulu). Any show can be pointed at another app by hand.</text>
+</svg>

@@ -1,8 +1,25 @@
 # Clicker
 
 A small, open-source remote-control app for Android touchscreen remotes, built first for the
-**Haptique RS90** (Android 12) after its stock software stopped working reliably. It runs on
-any Android 8+ device; IR needs a device with an IR emitter.
+**Haptique RS90** (Android 12) as an alternative to its stock app. It runs on any Android 8+
+device; IR needs a device with an IR emitter.
+
+**New to this? Start with the [RS90 setup guide](docs/setup-rs90.md).**
+
+<p align="center">
+  <img src="docs/media/demo.gif" width="240" alt="Clicker on an RS90-sized screen: a show's details, trending shows, following one, and the Help page" />
+</p>
+
+<p align="center">
+  <img src="docs/media/shows.png" width="24%" alt="Shows: new episodes first, with posters and the app each is on" />
+  <img src="docs/media/detail.png" width="24%" alt="A show's details: summary, where you are, and Open in Prime Video" />
+  <img src="docs/media/trending.png" width="24%" alt="Trending this week across services, filtered by service" />
+  <img src="docs/media/help.png" width="24%" alt="Help: big request buttons, with an urgent one in red" />
+</p>
+
+<p align="center"><img src="docs/media/how-shows-work.svg" width="720" alt="How show tracking works: TVmaze and TMDB facts plus your list, grouped into new, coming soon, caught up and snoozed, opening the right streaming app" /></p>
+
+Screenshots use demo data on an emulator sized like the RS90 (480×800).
 
 It talks to devices directly on your network. The remote control part needs no cloud account
 and no server; the optional show tracking and help alerts use the online services named below.
@@ -19,7 +36,7 @@ are mapped too. Settings has a key tester to identify other keys.
 
 ## Screens
 
-The bottom bar switches between four pages:
+The bottom bar switches between four pages; the gear opens Settings.
 
 - **Apps**: choose Apple TV or LG TV at the top (the dot shows the connection), On/Off for
   everything, Input, and app tiles with their artwork (Apple TV, Netflix, Prime Video, YouTube,
@@ -38,7 +55,19 @@ The bottom bar switches between four pages:
   help alert keys and buttons, show list backup and restore, IR tests, the key tester, and an
   optional personal background.
 
+## Related projects
+
+- [Harmonium](https://github.com/skavan/harmonium): fast Home Assistant dashboards for low-power
+  Android remotes, including the RS90. A good fit if your home already runs Home Assistant.
+- [haptique_rs90](https://github.com/daangel27/haptique_rs90): a Home Assistant integration for
+  the RS90's stock software over MQTT.
+
+Clicker takes a different route: a native app that talks to the TV and Apple TV directly, with
+no Home Assistant or hub required.
+
 ## Build and install
+
+Not a developer? Skip this and follow the [setup guide](docs/setup-rs90.md).
 
 Requirements: JDK 17 and the Android SDK (platform 35).
 
@@ -48,11 +77,14 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
 On the RS90, turn on Developer options (tap *Build number* 7 times) and USB debugging first.
+The [setup guide](docs/setup-rs90.md) walks through everything, including making Clicker the
+home screen.
 
-**RS90 / MediaTek note:** the first time the app goes online (and again after a reinstall), the
-system shows "Clicker needs to access the network…". Tap **Allow** or **Wi-Fi only**; until
-then every connection silently times out. It can be changed later under *Settings → Network &
-internet → Network data control*.
+**RS90 / MediaTek note:** the first time the app goes online, and again after every update or
+reinstall, the system shows "Clicker needs to access the network…". Tap **Allow** or **Wi-Fi
+only**; until then every connection silently times out. It can be changed later under
+*Settings → Network & internet → Network data controller*. If Clicker still can't connect,
+restart the device.
 
 **Apple TV pairing note:** tvOS drops the pairing connection about 30 seconds after it shows
 the code, so enter the code promptly (the dialog shows a countdown).
@@ -109,8 +141,11 @@ token and your user key under Settings → Help alerts, or drop them in:
 ```bash
 adb push help.json /sdcard/Android/data/dev.clicker.remote/files/help.json
 # {"appToken": "...", "userKey": "...", "sender": "Sam", "recipient": "Alex",
-#  "requests": ["Water please", "Coffee please"]}
+#  "requests": ["!Air machine", "Water please", "Coffee please"]}
 ```
+
+The file is read the next time the app starts, then deleted from the device. Delete your local
+copy too: it holds your Pushover token.
 
 This depends on Wi-Fi, the internet and Pushover. It is not a medical alert system.
 
@@ -161,6 +196,17 @@ raise the database version and add a migration so updates never lose anyone's li
 Every release must be signed with the same key, or Android refuses the update. Point
 `clicker.signing` in `local.properties` at a properties file outside the repository (see
 `app/build.gradle.kts`).
+
+## Security
+
+Clicker stores Apple TV pairing keys, the LG client key and any Pushover or TMDB tokens in the
+app's private storage on the device. If you find a security problem, please report it privately
+through GitHub's *Report a vulnerability* (Security tab) rather than in a public issue.
+
+## Not affiliated
+
+Clicker is an independent project. It is not affiliated with or endorsed by Haptique / Cantata,
+Apple, LG, Denon, TVmaze, TMDB, JustWatch, Pushover or any streaming service.
 
 ## License
 

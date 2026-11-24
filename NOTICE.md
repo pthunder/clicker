@@ -15,8 +15,18 @@ work made this possible:
   independent implementation of that layout.
 - **[Flipper-IRDB](https://github.com/Lucaslhm/Flipper-IRDB)**: the Denon soundbar codes.
 
-Libraries shipped in the app: AndroidX / Jetpack Compose (Apache-2.0), Kotlin coroutines
-(Apache-2.0), OkHttp (Apache-2.0), Bouncy Castle (MIT-style Bouncy Castle licence).
+Online services used by the optional features:
 
-Apple TV, tvOS, LG, webOS, Denon and Haptique are trademarks of their owners. Clicker is not
+- **[TVmaze](https://www.tvmaze.com/api)**: show data and air dates, under CC BY-SA. Credited on
+  the Shows pages.
+- **[TMDB](https://www.themoviedb.org)**: trending shows. This product uses the TMDB API but is
+  not endorsed or certified by TMDB. Streaming availability is
+  **[JustWatch](https://www.justwatch.com)** data, provided through TMDB.
+- **[Pushover](https://pushover.net)**: help alerts.
+
+Libraries shipped in the app: AndroidX / Jetpack Compose and Room (Apache-2.0), Kotlin
+coroutines (Apache-2.0), OkHttp (Apache-2.0), Bouncy Castle (MIT-style Bouncy Castle licence).
+
+Apple TV, tvOS, LG, webOS, Denon, Haptique and the streaming services named in the app are
+trademarks of their owners. Clicker is not
 affiliated with or endorsed by any of them.
