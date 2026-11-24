@@ -188,7 +188,7 @@ fun SettingsScreen(controller: RemoteController, lastKey: String?, onBack: () ->
         }
         OutlinedTextField(
             requests, { requests = it; help.requests = it.lines() },
-            label = { Text("Buttons, one per line") }, modifier = Modifier.fillMaxWidth(), minLines = 3,
+            label = { Text("Buttons, one per line (start with ! for urgent)") }, modifier = Modifier.fillMaxWidth(), minLines = 3,
         )
         Text(
             "Alerts repeat every 30 seconds until acknowledged in the Pushover app. Not a medical alert system.",

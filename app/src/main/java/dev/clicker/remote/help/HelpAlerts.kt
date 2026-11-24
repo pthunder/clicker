@@ -60,7 +60,7 @@ class HelpAlerts(context: Context, private val scope: CoroutineScope) {
     var recipient: String
         get() = prefs.getString("recipient", "") ?: ""
         set(v) = prefs.edit().putString("recipient", v.trim()).apply()
-    /** The request buttons, one per line. */
+    /** The request buttons, one per line. A line starting with "!" is urgent (see [isUrgent]). */
     var requests: List<String>
         get() = prefs.getString("requests", null)?.lines()?.map { it.trim() }?.filter { it.isNotEmpty() } ?: DEFAULT_REQUESTS
         set(v) = prefs.edit().putString("requests", v.joinToString("\n")).apply()
@@ -86,7 +86,9 @@ class HelpAlerts(context: Context, private val scope: CoroutineScope) {
     }
 
     /** Sends a request. Any earlier request still alerting is replaced. */
-    fun send(text: String) {
+    fun send(request: String) {
+        val urgent = isUrgent(request)
+        val text = label(request)
         val token = appToken
         val user = userKey
         if (token == null || user == null) {
@@ -98,7 +100,7 @@ class HelpAlerts(context: Context, private val scope: CoroutineScope) {
         _alert.value = Alert(text, Stage.SENDING)
         watching = scope.launch(Dispatchers.IO) {
             val receipt = try {
-                post(token, user, text)
+                post(token, user, text, urgent)
             } catch (e: Exception) {
                 Log.w(TAG, "help alert failed", e)
                 _alert.update { it?.copy(stage = Stage.FAILED, error = "Couldn't send. Is the remote on Wi-Fi?") }
@@ -121,17 +123,17 @@ class HelpAlerts(context: Context, private val scope: CoroutineScope) {
         _alert.value = null
     }
 
-    private fun post(token: String, user: String, text: String): String {
-        val title = sender.ifEmpty { "Clicker" }
+    private fun post(token: String, user: String, text: String, urgent: Boolean): String {
+        val from = sender.ifEmpty { "Clicker" }
         val body = FormBody.Builder()
             .add("token", token)
             .add("user", user)
-            .add("title", "$title needs something")
+            .add("title", if (urgent) "URGENT from $from" else "$from needs something")
             .add("message", text)
             .add("priority", "2") // emergency: repeats until acknowledged
-            .add("retry", "30")
-            .add("expire", "3600")
-            .add("sound", "persistent")
+            .add("retry", "30") // Pushover's shortest repeat
+            .add("expire", if (urgent) "10800" else "3600")
+            .add("sound", if (urgent) "siren" else "persistent")
             .build()
         val request = Request.Builder().url("$API/messages.json").post(body).build()
         http.newCall(request).execute().use { response ->
@@ -182,6 +184,12 @@ class HelpAlerts(context: Context, private val scope: CoroutineScope) {
     companion object {
         private const val TAG = "Clicker"
         private const val API = "https://api.pushover.net/1"
-        val DEFAULT_REQUESTS = listOf("Water please", "Coffee please", "Air machine", "Can you come here?")
+        val DEFAULT_REQUESTS = listOf("!Air machine", "Water please", "Coffee please", "Can you come here?")
+
+        /** Urgent requests ("!Air machine") get their own sound and title and a red button. */
+        fun isUrgent(request: String) = request.trimStart().startsWith("!")
+
+        /** The request as shown and sent, without the urgent mark. */
+        fun label(request: String) = request.trimStart().removePrefix("!").trim()
     }
 }

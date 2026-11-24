@@ -31,7 +31,9 @@ The bottom bar switches between four pages:
   opens it in the right app. *Add* searches, or shows what's trending this week across services.
 - **Controls**: D-pad, Back / Home / Play, and press-and-hold volume.
 - **Help**: big buttons ("Water please", "Coffee please", …) that send an alert to someone's
-  phone until they acknowledge it, then show "seen at 2:41" on the remote. Two taps to send.
+  phone until they acknowledge it, then show "seen at 2:41" on the remote. One tap starts a
+  3-second countdown with Cancel. Urgent requests (a line starting with `!`, such as
+  `!Air machine`) get a full-width red button, a siren sound and longer repeats.
 - **Settings** (gear): find and pair devices, what the volume buttons control, the TMDB token,
   help alert keys and buttons, show list backup and restore, IR tests, the key tester, and an
   optional personal background.
