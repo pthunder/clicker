@@ -450,20 +450,16 @@ class RemoteController(app: Application) : AndroidViewModel(app) {
         ir.send(IrCodes.LgTv.input)
     }
 
+    /**
+     * Opens an app on the Apple TV, where the streaming apps live, whatever the device switch
+     * says (that switch only steers the D-pad and keys).
+     */
     fun launch(shortcut: AppShortcut) = run("open ${shortcut.label}") {
-        when (_state.value.target) {
-            Target.APPLE_TV -> withAtv { atv ->
-                if (atvApps.isEmpty()) atvApps = atv.apps()
-                val bundle = atvBundleFor(shortcut)
-                    ?: throw IllegalStateException("${shortcut.label} isn't installed on the Apple TV")
-                atv.launchApp(bundle)
-            }
-            Target.LG_TV -> withLg(null) { tv ->
-                if (lgApps.isEmpty()) lgApps = tv.apps()
-                val id = pick(lgApps.map { it.id to it.title }, shortcut.match)
-                    ?: throw IllegalStateException("${shortcut.label} isn't installed on the TV")
-                tv.launch(id)
-            }
+        withAtv { atv ->
+            if (atvApps.isEmpty()) atvApps = atv.apps()
+            val bundle = atvBundleFor(shortcut)
+                ?: throw IllegalStateException("${shortcut.label} isn't installed on the Apple TV")
+            atv.launchApp(bundle)
         }
     }
 
