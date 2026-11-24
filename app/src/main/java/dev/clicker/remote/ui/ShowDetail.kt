@@ -27,6 +27,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -43,6 +44,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.clicker.remote.RemoteController
+import dev.clicker.remote.shows.AppleTvLinks
 import dev.clicker.remote.shows.Show
 import dev.clicker.remote.shows.ShowLogic
 import dev.clicker.remote.shows.StreamingApps
@@ -114,13 +116,17 @@ fun ShowDetail(id: Int, controller: RemoteController, person: String?, people: L
                 }
             }
             item(key = "actions") {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                val viaTvApp = app != null && AppleTvLinks.listsShowsFrom(app)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (app != null) {
                         Button(onClick = { controller.openShow(show) }) {
                             Icon(Icons.Default.PlayArrow, null, Modifier.size(18.dp))
                             Spacer(Modifier.size(4.dp))
-                            Text("Open in ${app.label}")
+                            Text(if (viaTvApp) "Open show" else "Open ${app.label}")
                         }
+                    }
+                    if (viaTvApp && followed != null) {
+                        TextButton(onClick = { controller.openShowApp(show) }) { Text("${app!!.label} app") }
                     }
                     if (followed == null) {
                         FilledTonalButton(onClick = {
@@ -131,6 +137,12 @@ fun ShowDetail(id: Int, controller: RemoteController, person: String?, people: L
                             }
                         }) { Text(if (person != null) "Add to $person's" else "Follow") }
                     }
+                }
+                if (viaTvApp) {
+                    Text(
+                        "Opens the show in the Apple TV app; Play there starts it in ${app!!.label}.",
+                        fontSize = 11.sp, color = Color(0x99FFFFFF), modifier = Modifier.padding(top = 4.dp),
+                    )
                 }
             }
             d?.summary?.takeIf { it.isNotBlank() }?.let { summary ->

@@ -224,6 +224,11 @@ class AppleTvClient(
         request("_launchApp", mapOf("_bundleID" to bundleId))
     }
 
+    /** Opens a link (such as a show's page) in whichever app handles it on the Apple TV. */
+    suspend fun launchUrl(url: String) {
+        request("_launchApp", mapOf("_urlS" to url))
+    }
+
     /** Installed apps as bundle id to display name. */
     suspend fun apps(): Map<String, String> {
         val response = request("FetchLaunchableApplicationsEvent", emptyMap())

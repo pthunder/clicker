@@ -21,6 +21,7 @@ class TvMaze(private val http: OkHttpClient) {
         val network: String?,
         val status: String,
         val posterUrl: String?,
+        val imdb: String? = null,
     ) {
         val year: String? get() = premiered?.take(4)
     }
@@ -116,6 +117,7 @@ class TvMaze(private val http: OkHttpClient) {
             status = o.optString("status"),
             posterUrl = o.optJSONObject("image")?.let { it.optStringOrNull("medium") ?: it.optStringOrNull("original") }
                 ?.replace("http://", "https://"),
+            imdb = o.optJSONObject("externals")?.optStringOrNull("imdb"),
         )
 
         /** TVmaze summaries are small HTML snippets: keep the words. */

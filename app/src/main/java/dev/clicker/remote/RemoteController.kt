@@ -14,6 +14,7 @@ import dev.clicker.remote.ir.IrSignal
 import dev.clicker.remote.lgtv.WebOsClient
 import dev.clicker.remote.lgtv.WebOsDiscovery
 import dev.clicker.remote.help.HelpAlerts
+import dev.clicker.remote.shows.AppleTvLinks
 import dev.clicker.remote.shows.Show
 import dev.clicker.remote.shows.ShowStore
 import dev.clicker.remote.shows.StreamingApps
@@ -463,8 +464,25 @@ class RemoteController(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Opens the app a show is on. */
+    /** Opens a link on the Apple TV, e.g. a show's page in its streaming app. */
+    fun openUrl(url: String) = run("open link") { withAtv { it.launchUrl(url) } }
+
+    /**
+     * Opens a show. Most services' shows open on their page in the Apple TV app, whose Play
+     * button hands off to the right app; Netflix and a few others don't list their shows there
+     * (and ignore links), so those open their own app.
+     */
     fun openShow(show: Show) {
+        val app = StreamingApps.appFor(show) ?: return say("Choose an app for ${show.name} first")
+        if (!AppleTvLinks.listsShowsFrom(app)) return launch(app)
+        run("open ${show.name}") {
+            val link = shows.appleTvLink(show)
+            withAtv { it.launchUrl(link) }
+        }
+    }
+
+    /** Opens the show's streaming app itself, at its home screen. */
+    fun openShowApp(show: Show) {
         val app = StreamingApps.appFor(show) ?: return say("Choose an app for ${show.name} first")
         launch(app)
     }

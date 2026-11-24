@@ -54,6 +54,12 @@ class MainActivity : ComponentActivity() {
         stoppedAt = System.currentTimeMillis()
     }
 
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        applySetupExtras()
+    }
+
     /**
      * Lets a developer preconfigure addresses over adb, e.g.
      * adb shell am start -n dev.clicker.remote/.MainActivity --es atv_host 192.168.1.20 --es lg_host 192.168.1.21
@@ -61,6 +67,8 @@ class MainActivity : ComponentActivity() {
     private fun applySetupExtras() {
         intent?.getStringExtra("atv_host")?.let { controller.setAppleTvAddress(it) }
         intent?.getStringExtra("lg_host")?.let { controller.setLgAddress(it) }
+        // For testing deep links: --es open_url https://www.netflix.com/title/...
+        intent?.getStringExtra("open_url")?.let { controller.openUrl(it) }
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {

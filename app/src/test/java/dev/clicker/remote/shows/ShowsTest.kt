@@ -122,6 +122,13 @@ class ShowsTest {
         assertEquals("Kay & Pete\nreturn.", TvMaze.plainText("<p><b>Kay</b> &amp; Pete</p><p>return.</p>"))
     }
 
+    @Test fun appleTvLinks() {
+        assertEquals("https://tv.apple.com/us/show/high-potential/umc.cmc.x", AppleTvLinks.showUrl("umc.cmc.x", "High Potential"))
+        assertEquals("https://tv.apple.com/search?term=Love%20Island%3A%20All%20Stars", AppleTvLinks.searchUrl("Love Island: All Stars"))
+        assertFalse(AppleTvLinks.listsShowsFrom(StreamingApps.NETFLIX))
+        assertTrue(AppleTvLinks.listsShowsFrom(StreamingApps.HULU))
+    }
+
     @Test fun peopleLists() {
         val everyone = show()
         val hers = show().copy(owners = Show.joinOwners(listOf("Sam")))

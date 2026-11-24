@@ -34,6 +34,7 @@ class ShowStore(context: Context, private val scope: CoroutineScope) {
     private val posters = File(app.filesDir, "posters").apply { mkdirs() }
     private val prefs = app.getSharedPreferences("shows", Context.MODE_PRIVATE)
     private val refreshing = Mutex()
+    private val appleTv = AppleTvLinks(app, http)
 
     val shows: Flow<List<Show>> = dao.all()
 
@@ -122,7 +123,16 @@ class ShowStore(context: Context, private val scope: CoroutineScope) {
     /** Full details for the detail screen (summary and every episode), cached for a few minutes. */
     suspend fun detail(id: Int): TvMaze.Details = withContext(Dispatchers.IO) {
         detailCache[id]?.let { (at, d) -> if (System.currentTimeMillis() - at < 10 * 60_000L) return@withContext d }
-        api.details(id, withEpisodes = true).also { detailCache[id] = System.currentTimeMillis() to it }
+        api.details(id, withEpisodes = true).also {
+            detailCache[id] = System.currentTimeMillis() to it
+            appleTv.rememberImdb(id, it.found.imdb)
+        }
+    }
+
+    /** A link that opens the show in the Apple TV app: its page if known, else a search. */
+    suspend fun appleTvLink(show: Show): String = withContext(Dispatchers.IO) {
+        if (appleTv.imdbFor(show.id) == null) runCatching { detail(show.id) }
+        appleTv.linkFor(show.id, show.name)
     }
 
     /** The TVmaze id behind a trending show, so its detail screen can open. */
@@ -188,13 +198,19 @@ class ShowStore(context: Context, private val scope: CoroutineScope) {
                 delay(600)
             }
             if (failures == 0) prefs.edit().putLong("refreshedAt", System.currentTimeMillis()).apply()
+            // Apple TV app pages for every show, in one lookup.
+            runCatching { appleTv.prefetch(dao.list().mapNotNull { s -> appleTv.imdbFor(s.id)?.let { s.id to it } }.toMap()) }
         } finally {
             refreshing.unlock()
         }
     }
 
     /** Updates TVmaze facts and keeps the household's own fields. */
-    private fun merge(show: Show, fresh: TvMaze.Details) = show.copy(
+    private fun merge(show: Show, fresh: TvMaze.Details): Show = mergeFacts(show, fresh).also {
+        appleTv.rememberImdb(show.id, fresh.found.imdb)
+    }
+
+    private fun mergeFacts(show: Show, fresh: TvMaze.Details) = show.copy(
         name = fresh.found.name,
         posterUrl = fresh.found.posterUrl,
         network = fresh.found.network,

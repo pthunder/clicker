@@ -292,7 +292,7 @@ internal fun ShowDialog(show: Show, controller: RemoteController, people: List<S
                 when (page) {
                     DialogPage.MAIN -> LazyColumn {
                         item { Text(ShowLogic.headline(show), fontSize = 13.sp, modifier = Modifier.padding(bottom = 8.dp)) }
-                        if (app != null) item { DialogOption("Open in ${app.label}") { controller.openShow(show); onDismiss() } }
+                        if (app != null) item { DialogOption("Open show") { controller.openShow(show); onDismiss() } }
                         item { DialogOption("We're caught up") { act { controller.shows.caughtUp(show) } } }
                         item { DialogOption("Where we are…") { page = DialogPage.SEASONS } }
                         if (ShowLogic.isSnoozed(show)) {

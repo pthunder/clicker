@@ -44,8 +44,10 @@ The bottom bar switches between four pages; the gear opens Settings.
 - **Shows**: the shows you follow, grouped as *New to watch*, *Coming soon*, *Caught up*,
   *Finished* and *Snoozed*. *What's new* hides shows with nothing new; they come back by
   themselves when an episode airs or a season gets a date. Lists can be per person. Tap a show
-  for its details: summary, new episodes (tick them off), the next air date, and a button that
-  opens it in the right app. *Add* searches, or shows what's trending this week across services.
+  for its details: summary, new episodes (tick them off), the next air date, and **Open show**.
+  That opens the show's page in the Apple TV app (found through Wikidata), or an Apple TV search
+  for it, and Play there starts it in Hulu, Peacock, Prime Video and so on. Netflix ignores
+  links from outside, so Netflix shows open the Netflix app. *Add* searches, or shows what's trending this week across services.
 - **Controls**: D-pad, Back / Home / Play, and press-and-hold volume.
 - **Help**: big buttons ("Water please", "Coffee please", …) that send an alert to someone's
   phone until they acknowledge it, then show "seen at 2:41" on the remote. One tap starts a

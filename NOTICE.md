@@ -22,6 +22,7 @@ Online services used by the optional features:
 - **[TMDB](https://www.themoviedb.org)**: trending shows. This product uses the TMDB API but is
   not endorsed or certified by TMDB. Streaming availability is
   **[JustWatch](https://www.justwatch.com)** data, provided through TMDB.
+- **[Wikidata](https://www.wikidata.org)**: Apple TV app show ids (property P9751), under CC0.
 - **[Pushover](https://pushover.net)**: help alerts.
 
 Libraries shipped in the app: AndroidX / Jetpack Compose and Room (Apache-2.0), Kotlin
