@@ -6,6 +6,10 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -34,6 +38,8 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -75,13 +81,13 @@ import dev.clicker.remote.Target
 import kotlinx.coroutines.delay
 
 /**
- * Main screen. Apps come first; the D-pad, Back/Home/Play and volume are folded away behind
- * "Controls" because the remote's physical keys already do those jobs.
+ * Main screen. Apps come first, then the household's Shows. The D-pad, Back/Home/Play and
+ * volume are folded away behind "Controls" because the remote's physical keys already do those jobs.
  */
 @Composable
 fun RemoteScreen(controller: RemoteController, onSettings: () -> Unit) {
     val state by controller.state.collectAsState()
-    var showControls by rememberSaveable { mutableStateOf(false) }
+    var page by rememberSaveable { mutableStateOf(Page.APPS) }
 
     LaunchedEffect(state.message) {
         if (state.message != null) {
@@ -95,34 +101,38 @@ fun RemoteScreen(controller: RemoteController, onSettings: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        // Which device the controls and app tiles drive
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            SingleChoiceSegmentedButtonRow(Modifier.weight(1f)) {
-                listOf(Target.APPLE_TV to "Apple TV", Target.LG_TV to "LG TV").forEachIndexed { i, (target, label) ->
-                    val link = if (target == Target.APPLE_TV) state.atv else state.lg
-                    SegmentedButton(
-                        selected = state.target == target,
-                        onClick = { controller.setTarget(target) },
-                        shape = SegmentedButtonDefaults.itemShape(i, 2),
-                        icon = { StatusDot(link) },
-                    ) { Text(label, fontSize = 14.sp) }
+        // Device picker and power row; the Shows page hides them to make room for the list.
+        if (page != Page.SHOWS && page != Page.HELP) {
+            // Which device the controls and app tiles drive
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                SingleChoiceSegmentedButtonRow(Modifier.weight(1f)) {
+                    listOf(Target.APPLE_TV to "Apple TV", Target.LG_TV to "LG TV").forEachIndexed { i, (target, label) ->
+                        val link = if (target == Target.APPLE_TV) state.atv else state.lg
+                        SegmentedButton(
+                            selected = state.target == target,
+                            onClick = { controller.setTarget(target) },
+                            shape = SegmentedButtonDefaults.itemShape(i, 2),
+                            icon = { StatusDot(link) },
+                        ) { Text(label, fontSize = 14.sp) }
+                    }
                 }
+                SignalLights(state.pressedAt, state.sentAt)
+                IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, "Settings") }
             }
-            SignalLights(state.pressedAt, state.sentAt)
-            IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, "Settings") }
+
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                PillButton("On", Icons.Default.PowerSettingsNew, Modifier.weight(1f), tint = Color(0xFF66BB6A)) { controller.powerOn() }
+                PillButton("Off", Icons.Default.PowerSettingsNew, Modifier.weight(1f), tint = Color(0xFFEF9A9A)) { controller.powerOff() }
+                PillButton("Input", Icons.Default.Input, Modifier.weight(1f)) { controller.tvInput() }
+            }
         }
 
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            PillButton("On", Icons.Default.PowerSettingsNew, Modifier.weight(1f), tint = Color(0xFF66BB6A)) { controller.powerOn() }
-            PillButton("Off", Icons.Default.PowerSettingsNew, Modifier.weight(1f), tint = Color(0xFFEF9A9A)) { controller.powerOff() }
-            PillButton("Input", Icons.Default.Input, Modifier.weight(1f)) { controller.tvInput() }
-        }
-
-        AnimatedContent(showControls, Modifier.weight(1f), label = "main") { controls ->
-            if (controls) {
-                Controls(controller)
-            } else {
-                AppGrid(state.artwork, onLaunch = controller::launch)
+        AnimatedContent(page, Modifier.weight(1f), label = "main") { shown ->
+            when (shown) {
+                Page.APPS -> AppGrid(state.artwork, onLaunch = controller::launch)
+                Page.SHOWS -> ShowsScreen(controller)
+                Page.CONTROLS -> Controls(controller)
+                Page.HELP -> HelpScreen(controller)
             }
         }
 
@@ -134,28 +144,57 @@ fun RemoteScreen(controller: RemoteController, onSettings: () -> Unit) {
             )
         }
 
-        PillButton(
-            if (showControls) "Apps" else "Controls",
-            if (showControls) Icons.Default.Apps else Icons.Default.Gamepad,
-            Modifier.fillMaxWidth(0.6f),
-            height = 40.dp,
-        ) { showControls = !showControls }
+        PageBar(page, onPick = { page = it })
+    }
+}
+
+private enum class Page(val label: String, val icon: ImageVector) {
+    APPS("Apps", Icons.Default.Apps),
+    SHOWS("Shows", Icons.Default.Tv),
+    CONTROLS("Controls", Icons.Default.Gamepad),
+    HELP("Help", Icons.Default.NotificationsActive),
+}
+
+/** The bottom bar: four equal tabs, each an icon centred over its label. */
+@Composable
+private fun PageBar(page: Page, onPick: (Page) -> Unit) {
+    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+        Row(Modifier.fillMaxWidth().padding(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Page.entries.forEach { p ->
+                val selected = p == page
+                Surface(
+                    onClick = { onPick(p) },
+                    modifier = Modifier.weight(1f).height(52.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.30f) else Color.Transparent,
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                        Icon(p.icon, null, Modifier.size(20.dp), tint = if (selected) Color.White else Color(0xCCFFFFFF))
+                        Text(
+                            p.label, fontSize = 11.sp, maxLines = 1,
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                            color = if (selected) Color.White else Color(0xCCFFFFFF),
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
 @Composable
 private fun AppGrid(artwork: Map<String, String>, onLaunch: (AppShortcut) -> Unit) {
-    // Two columns for up to four apps, three columns beyond that.
+    // Two columns for up to four apps, three beyond that; scrolls when they don't all fit.
     val columns = if (DEFAULT_SHORTCUTS.size <= 4) 2 else 3
-    Column(
-        Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(columns),
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        DEFAULT_SHORTCUTS.chunked(columns).forEach { row ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                row.forEach { app -> AppTile(app, artwork[app.label], Modifier.weight(1f)) { onLaunch(app) } }
-                repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
-            }
+        items(DEFAULT_SHORTCUTS, key = { it.label }) { app ->
+            AppTile(app, artwork[app.label], Modifier) { onLaunch(app) }
         }
     }
 }

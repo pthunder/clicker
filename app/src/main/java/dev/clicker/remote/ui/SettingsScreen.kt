@@ -1,5 +1,9 @@
 package dev.clicker.remote.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -132,6 +136,62 @@ fun SettingsScreen(controller: RemoteController, lastKey: String?, onBack: () ->
         }
         Text(
             "Copy background.jpg and/or background.mp4 to\n${BackgroundFiles.dir(LocalContext.current)?.path ?: "(storage unavailable)"}",
+            fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        HorizontalDivider()
+
+        // ---- Show list backup
+        val scope = rememberCoroutineScope()
+        val restore = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri != null) scope.launch {
+                runCatching { controller.shows.restore(uri) }
+                    .onSuccess { controller.notify("Restored $it shows") }
+                    .onFailure { controller.notify(it.message ?: "Couldn't restore that file") }
+            }
+        }
+        Text("Show list", fontWeight = FontWeight.SemiBold)
+        Text(
+            "A copy is saved after every change to Documents/Clicker/clicker-shows.json on this remote. " +
+                "It survives reinstalling the app.",
+            fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        OutlinedButton(onClick = { restore.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) }) {
+            Text("Restore from a backup…")
+        }
+        var tmdb by remember { mutableStateOf(controller.shows.tmdbToken.orEmpty()) }
+        OutlinedTextField(
+            value = tmdb, onValueChange = { tmdb = it; controller.shows.tmdbToken = it },
+            label = { Text("TMDB API read access token (for Trending)") }, singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Text(
+            "Free from themoviedb.org → Settings → API. Stays on this remote.",
+            fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        HorizontalDivider()
+
+        // ---- Help alerts
+        val help = controller.help
+        Text("Help alerts (Pushover)", fontWeight = FontWeight.SemiBold)
+        var pushToken by remember { mutableStateOf(help.appToken.orEmpty()) }
+        var pushUser by remember { mutableStateOf(help.userKey.orEmpty()) }
+        var sender by remember { mutableStateOf(help.sender) }
+        var recipient by remember { mutableStateOf(help.recipient) }
+        var requests by remember { mutableStateOf(help.requests.joinToString("\n")) }
+        OutlinedTextField(pushToken, { pushToken = it; help.appToken = it }, label = { Text("Application API token") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(pushUser, { pushUser = it; help.userKey = it }, label = { Text("User key (whose phone)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(sender, { sender = it; help.sender = it }, label = { Text("From") }, singleLine = true, modifier = Modifier.weight(1f))
+            OutlinedTextField(recipient, { recipient = it; help.recipient = it }, label = { Text("To") }, singleLine = true, modifier = Modifier.weight(1f))
+        }
+        OutlinedTextField(
+            requests, { requests = it; help.requests = it.lines() },
+            label = { Text("Buttons, one per line") }, modifier = Modifier.fillMaxWidth(), minLines = 3,
+        )
+        Text(
+            "Alerts repeat every 30 seconds until acknowledged in the Pushover app. Not a medical alert system.",
             fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 

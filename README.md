@@ -4,7 +4,8 @@ A small, open-source remote-control app for Android touchscreen remotes, built f
 **Haptique RS90** (Android 12) after its stock software stopped working reliably. It runs on
 any Android 8+ device; IR needs a device with an IR emitter.
 
-It talks to devices directly on your network. No cloud account, no server.
+It talks to devices directly on your network. The remote control part needs no cloud account
+and no server; the optional show tracking and help alerts use the online services named below.
 
 | Device | How | What works |
 |---|---|---|
@@ -18,11 +19,22 @@ are mapped too. Settings has a key tester to identify other keys.
 
 ## Screens
 
-- **Remote**: choose Apple TV or LG TV at the top (the dot shows the connection), On/Off for
-  everything, Input, app shortcuts (Paramount+, Peacock, Hulu, YouTube), a D-pad, Back / Home /
-  Play, and volume.
-- **Settings**: find and pair devices, choose what the volume buttons control, IR tests, the
-  key tester, and an optional personal background.
+The bottom bar switches between four pages:
+
+- **Apps**: choose Apple TV or LG TV at the top (the dot shows the connection), On/Off for
+  everything, Input, and app tiles with their artwork (Apple TV, Netflix, Prime Video, YouTube,
+  Hulu, Peacock, Paramount+, HBO Max, Disney+).
+- **Shows**: the shows you follow, grouped as *New to watch*, *Coming soon*, *Caught up*,
+  *Finished* and *Snoozed*. *What's new* hides shows with nothing new; they come back by
+  themselves when an episode airs or a season gets a date. Lists can be per person. Tap a show
+  for its details: summary, new episodes (tick them off), the next air date, and a button that
+  opens it in the right app. *Add* searches, or shows what's trending this week across services.
+- **Controls**: D-pad, Back / Home / Play, and press-and-hold volume.
+- **Help**: big buttons ("Water please", "Coffee please", …) that send an alert to someone's
+  phone until they acknowledge it, then show "seen at 2:41" on the remote. Two taps to send.
+- **Settings** (gear): find and pair devices, what the volume buttons control, the TMDB token,
+  help alert keys and buttons, show list backup and restore, IR tests, the key tester, and an
+  optional personal background.
 
 ## Build and install
 
@@ -59,6 +71,47 @@ Addresses can also be set over adb:
 adb shell am start -n dev.clicker.remote/.MainActivity --es atv_host 192.168.1.20 --es lg_host 192.168.1.21
 ```
 
+### Show tracking
+
+Show data and air dates come from [TVmaze](https://www.tvmaze.com/api) (free, no key). The
+Trending list comes from [TMDB](https://www.themoviedb.org) and needs your own free API read
+access token, pasted under Settings → Show list. "Where to watch" data is JustWatch's, via TMDB.
+
+A list prepared on a computer can be loaded over adb. It's the same format as the backup Clicker
+writes to `Documents/Clicker/clicker-shows.json` after every change:
+
+```json
+{
+  "format": "clicker-shows", "version": 1,
+  "caughtUpBefore": "2026-11-17",
+  "shows": [
+    { "tvmazeId": 82, "name": "Game of Thrones", "caughtUp": true, "owners": ["Sam"], "app": "HBO Max" }
+  ]
+}
+```
+
+```bash
+adb push shows.json /sdcard/Android/data/dev.clicker.remote/files/import-shows.json
+```
+
+`caughtUp` marks a show as watched up to its latest episode (or, with `caughtUpBefore`, up to
+the last episode before that date, so newer ones show as new). The file is imported the next
+time the app starts, then deleted.
+
+### Help alerts (optional)
+
+Help requests are sent with [Pushover](https://pushover.net) as emergency alerts, which repeat
+every 30 seconds until acknowledged. Create an application on pushover.net and enter its API
+token and your user key under Settings → Help alerts, or drop them in:
+
+```bash
+adb push help.json /sdcard/Android/data/dev.clicker.remote/files/help.json
+# {"appToken": "...", "userKey": "...", "sender": "Sam", "recipient": "Alex",
+#  "requests": ["Water please", "Coffee please"]}
+```
+
+This depends on Wi-Fi, the internet and Pushover. It is not a medical alert system.
+
 ### Personal background (optional)
 
 Put a photo and/or a short video in the app's folder on the device, then choose it under
@@ -76,6 +129,8 @@ app/src/main/java/dev/clicker/remote/
   appletv/   Companion protocol: OPACK, TLV8, SRP-6a, HAP crypto, framing, client, mDNS discovery
   lgtv/      webOS SSAP client, SSDP discovery, Wake-on-LAN
   ir/        NEC and Kaseikyo encoders, IR code tables, ConsumerIrManager wrapper
+  shows/     followed shows: Room database, TVmaze and TMDB clients, app matching, backup
+  help/      help requests sent as Pushover emergency alerts
   RemoteController.kt   routes every button to the right device; connects and reconnects
   ui/        Compose screens
 ```
@@ -88,13 +143,22 @@ encoders.
 
 - Apple TV keys and the LG client key are stored in the app's private storage on the device.
 - The LG TV uses a self-signed certificate; Clicker accepts it only for the TV's own address.
-- Nothing is sent anywhere except to the devices you set up.
+- Device control talks only to the devices you set up.
+- Show tracking contacts TVmaze (show names you search or follow) and, if you add a token, TMDB.
+  Help alerts go through Pushover. Tokens and keys are kept on the device, never in the code.
 
 ## Contributing
 
 Issues and pull requests are welcome, especially more IR code sets and other TV brands. Keep
 new device support behind the same small interfaces (`ir/`, `lgtv/`, `appletv/`) and add
 tests with reference vectors where a protocol is involved.
+
+The show database keeps an exported schema per version in `app/schemas`; when `Show` changes,
+raise the database version and add a migration so updates never lose anyone's list.
+
+Every release must be signed with the same key, or Android refuses the update. Point
+`clicker.signing` in `local.properties` at a properties file outside the repository (see
+`app/build.gradle.kts`).
 
 ## License
 

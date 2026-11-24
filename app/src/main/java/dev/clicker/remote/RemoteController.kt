@@ -13,6 +13,10 @@ import dev.clicker.remote.ir.IrCodes
 import dev.clicker.remote.ir.IrSignal
 import dev.clicker.remote.lgtv.WebOsClient
 import dev.clicker.remote.lgtv.WebOsDiscovery
+import dev.clicker.remote.help.HelpAlerts
+import dev.clicker.remote.shows.Show
+import dev.clicker.remote.shows.ShowStore
+import dev.clicker.remote.shows.StreamingApps
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
@@ -39,10 +43,13 @@ data class AppShortcut(
 val DEFAULT_SHORTCUTS = listOf(
     AppShortcut("Apple TV", "Apple TV", atvBundle = "com.apple.TVWatchList", storeBundle = "com.apple.tv"),
     AppShortcut("Netflix", "Netflix"),
+    AppShortcut("Prime Video", "Prime Video"),
     AppShortcut("YouTube", "YouTube"),
     AppShortcut("Hulu", "Hulu"),
     AppShortcut("Peacock", "Peacock"),
     AppShortcut("Paramount+", "Paramount"),
+    AppShortcut("HBO Max", "Max"),
+    AppShortcut("Disney+", "Disney"),
 )
 
 data class UiState(
@@ -85,6 +92,12 @@ class RemoteController(app: Application) : AndroidViewModel(app) {
     private var lgApps: List<WebOsClient.App> = emptyList()
     private val artwork = Artwork(app)
 
+    /** The household's followed shows. */
+    val shows = ShowStore(app, viewModelScope)
+
+    /** Help requests sent to a phone (Pushover). */
+    val help = HelpAlerts(app, viewModelScope)
+
     private val _state = MutableStateFlow(
         UiState(
             target = settings.target,
@@ -117,10 +130,14 @@ class RemoteController(app: Application) : AndroidViewModel(app) {
             }
         }
         // The activity calls reconnect() as soon as it starts, so the first button press is quick.
+        shows.importPending()
+        help.importPending()
+        shows.startAutoRefresh()
     }
 
     /** Connects any configured device that isn't connected. Called whenever the remote wakes up. */
     fun reconnect() = background("reconnect") {
+        shows.refreshIfStale()
         if (settings.atvCredentials != null && settings.atvHost.isNotEmpty() && atv?.isConnected != true) {
             runCatching { appleTv() }.onFailure { Log.w(TAG, "Apple TV: $it") }
         }
@@ -449,6 +466,15 @@ class RemoteController(app: Application) : AndroidViewModel(app) {
             }
         }
     }
+
+    /** Opens the app a show is on. */
+    fun openShow(show: Show) {
+        val app = StreamingApps.appFor(show) ?: return say("Choose an app for ${show.name} first")
+        launch(app)
+    }
+
+    /** Shows a short message under the main screen. */
+    fun notify(text: String) = say(text)
 
     /** The Apple TV bundle id for a shortcut: its fixed id if set (and installed), else by name. */
     private fun atvBundleFor(shortcut: AppShortcut): String? =
