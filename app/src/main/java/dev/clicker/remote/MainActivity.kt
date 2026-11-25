@@ -51,6 +51,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
+        controller.releaseVolume()
         stoppedAt = System.currentTimeMillis()
     }
 
@@ -65,6 +66,9 @@ class MainActivity : ComponentActivity() {
      * adb shell am start -n dev.clicker.remote/.MainActivity --es atv_host 192.168.1.20 --es lg_host 192.168.1.21
      */
     private fun applySetupExtras() {
+        // The launcher is exported, so any installed app could send these. Only development
+        // builds (installed with adb) honour them.
+        if (!BuildConfig.DEBUG) return
         intent?.getStringExtra("atv_host")?.let { controller.setAppleTvAddress(it) }
         intent?.getStringExtra("lg_host")?.let { controller.setLgAddress(it) }
         // For testing deep links: --es open_url https://www.netflix.com/title/...

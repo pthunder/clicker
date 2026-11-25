@@ -303,9 +303,13 @@ private fun HoldButton(label: String, icon: ImageVector, modifier: Modifier, onH
                 pressed = true
                 haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                 onHold(true)
-                tryAwaitRelease()
-                onHold(false)
-                pressed = false
+                try {
+                    tryAwaitRelease()
+                } finally {
+                    // Also runs if the button leaves the screen mid-hold, so volume never sticks.
+                    onHold(false)
+                    pressed = false
+                }
             })
         },
         shape = RoundedCornerShape(22.dp),

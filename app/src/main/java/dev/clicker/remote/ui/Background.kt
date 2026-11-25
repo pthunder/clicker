@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
@@ -70,14 +71,21 @@ fun IntroVideo(file: File, onFinished: () -> Unit) {
     // Lifecycle observers get ON_RESUME as soon as they are added; starting before prepare()
     // finishes puts MediaPlayer in its error state, so only resume once prepared.
     val prepared = remember(file) { java.util.concurrent.atomic.AtomicBoolean(false) }
+    // The file can disappear or become unreadable between launches: skip the intro then.
     val player = remember(file) {
-        MediaPlayer().apply {
-            setDataSource(file.path)
-            isLooping = false
-            setVolume(0f, 0f)
-            setOnCompletionListener { finished.value() }
-            setOnErrorListener { _, _, _ -> finished.value(); true }
-        }
+        val mp = MediaPlayer()
+        runCatching {
+            mp.setDataSource(file.path)
+            mp.isLooping = false
+            mp.setVolume(0f, 0f)
+            mp.setOnCompletionListener { finished.value() }
+            mp.setOnErrorListener { _, _, _ -> finished.value(); true }
+            mp
+        }.getOrElse { mp.release(); null }
+    }
+    if (player == null) {
+        LaunchedEffect(file) { finished.value() }
+        return
     }
     DisposableEffect(player) {
         val observer = LifecycleEventObserver { _, event ->

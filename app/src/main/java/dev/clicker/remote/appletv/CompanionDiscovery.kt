@@ -3,6 +3,7 @@ package dev.clicker.remote.appletv
 import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
+import android.net.wifi.WifiManager
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
@@ -14,6 +15,7 @@ class CompanionDiscovery(context: Context) {
     data class Found(val name: String, val host: String, val port: Int)
 
     private val nsd = context.getSystemService(Context.NSD_SERVICE) as NsdManager
+    private val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
 
     suspend fun scan(durationMs: Long = 4000): List<Found> {
         val results = ConcurrentLinkedQueue<Found>()
@@ -26,15 +28,23 @@ class CompanionDiscovery(context: Context) {
             override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {}
             override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) {}
         }
-        nsd.discoverServices("_companion-link._tcp", NsdManager.PROTOCOL_DNS_SD, listener)
-        val end = System.currentTimeMillis() + durationMs
-        // NsdManager resolves one service at a time, so resolve sequentially.
-        while (System.currentTimeMillis() < end) {
-            val next = toResolve.poll()
-            if (next == null) { delay(100); continue }
-            resolve(next)?.let { found -> if (results.none { it.host == found.host }) results += found }
+        // Some Wi-Fi drivers drop multicast (which discovery relies on) unless an app holds this.
+        val multicast = wifi.createMulticastLock("clicker-discovery").apply { setReferenceCounted(false) }
+        runCatching { multicast.acquire() }
+        try {
+            nsd.discoverServices("_companion-link._tcp", NsdManager.PROTOCOL_DNS_SD, listener)
+            val end = System.currentTimeMillis() + durationMs
+            // NsdManager resolves one service at a time, so resolve sequentially.
+            while (System.currentTimeMillis() < end) {
+                val next = toResolve.poll()
+                if (next == null) { delay(100); continue }
+                resolve(next)?.let { found -> if (results.none { it.host == found.host }) results += found }
+            }
+        } finally {
+            // Also when the scan is cancelled, so discovery never keeps running.
+            runCatching { nsd.stopServiceDiscovery(listener) }
+            runCatching { if (multicast.isHeld) multicast.release() }
         }
-        runCatching { nsd.stopServiceDiscovery(listener) }
         return results.sortedBy { it.name }
     }
 

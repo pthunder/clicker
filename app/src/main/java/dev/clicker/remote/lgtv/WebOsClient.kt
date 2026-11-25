@@ -18,7 +18,9 @@ import org.json.JSONObject
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
+import java.security.MessageDigest
 import java.security.SecureRandom
+import java.security.cert.CertificateException
 import java.security.cert.X509Certificate
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
@@ -34,14 +36,22 @@ class WebOsException(message: String, cause: Throwable? = null) : Exception(mess
  *
  * First connection shows an "allow this device" prompt on the TV; the returned client key is
  * reused after that. Newer TVs only accept the secure port 3001, which uses a self-signed
- * certificate, so the certificate is accepted for this TV's own address only.
+ * certificate. That certificate is pinned on first use: its fingerprint is remembered after the
+ * first successful pairing ([onCertificate]) and any other certificate is refused afterwards, so
+ * a device impersonating the TV can't collect the client key.
  *
  * Protocol reference: aiowebostv (Apache-2.0).
  */
 class WebOsClient(
     private val host: String,
     private val registrationTemplate: String,
+    /** SHA-256 of the TV's certificate from an earlier pairing, or null if not paired yet. */
+    private val pinnedCertificate: String? = null,
 ) {
+    /** The fingerprint seen on this connection; the caller stores it after pairing succeeds. */
+    @Volatile var seenCertificate: String? = null
+        private set
+
     private val http: OkHttpClient = trustingClient()
     private val lock = Mutex()
     private var socket: WebSocket? = null
@@ -230,6 +240,17 @@ class WebOsClient(
                 if (webSocket == inputSocket) inputSocket = null
             }
 
+            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                // The TV is closing the connection: finish the close and stop treating it as live.
+                webSocket.close(1000, null)
+                if (listen && webSocket == socket) {
+                    if (isConnected) onDisconnected?.invoke()
+                    isConnected = false
+                    pending.values.forEach { it.completeExceptionally(WebOsException("The TV closed the connection")) }
+                }
+                if (webSocket == inputSocket) inputSocket = null
+            }
+
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 if (listen && webSocket == socket) {
                     if (isConnected) onDisconnected?.invoke()
@@ -239,18 +260,31 @@ class WebOsClient(
             }
         }
         val ws = http.newWebSocket(Request.Builder().url(url).build(), listener)
-        val ok = withTimeoutOrNull(5_000) { opened.await() } ?: false
-        if (!ok) ws.cancel()
+        var ok = false
+        try {
+            ok = withTimeoutOrNull(5_000) { opened.await() } ?: false
+        } finally {
+            if (!ok) ws.cancel() // also on cancellation, so the socket never leaks
+        }
         return if (ok) ws else null
     }
 
     private fun trustingClient(): OkHttpClient {
-        // The TV presents a self-signed certificate. Accept it, but only for connections to this TV.
-        val trustAll = object : X509TrustManager {
+        // The TV presents a self-signed certificate: accept it only for this TV's address, and
+        // once pinned, only that exact certificate.
+        val pinning = object : X509TrustManager {
             override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {}
-            override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {}
+            override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {
+                val leaf = chain.firstOrNull() ?: throw CertificateException("No certificate")
+                val fingerprint = fingerprint(leaf)
+                if (pinnedCertificate != null && !pinnedCertificate.equals(fingerprint, ignoreCase = true)) {
+                    throw CertificateException("The TV's certificate changed. Reconnect it in Settings if you trust it.")
+                }
+                seenCertificate = fingerprint
+            }
             override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
         }
+        val trustAll = pinning
         val ssl = SSLContext.getInstance("TLS").apply { init(null, arrayOf<TrustManager>(trustAll), SecureRandom()) }
         return OkHttpClient.Builder()
             .sslSocketFactory(ssl.socketFactory, trustAll)
@@ -261,6 +295,9 @@ class WebOsClient(
     }
 
     companion object {
+        fun fingerprint(cert: X509Certificate): String =
+            MessageDigest.getInstance("SHA-256").digest(cert.encoded).joinToString("") { "%02x".format(it) }
+
         /** Sends a Wake-on-LAN magic packet. Works only if the TV allows "Turn on via Wi-Fi/LAN". */
         fun wakeOnLan(mac: String, broadcast: String = "255.255.255.255") {
             val macBytes = mac.split(':', '-').map { it.toInt(16).toByte() }.toByteArray()

@@ -39,6 +39,11 @@ class Settings(context: Context) {
         get() = prefs.getString("lg_host", "") ?: ""
         set(v) = prefs.edit().putString("lg_host", v.trim()).apply()
 
+    /** SHA-256 of the LG TV's certificate, pinned at first pairing. */
+    var lgCertPin: String?
+        get() = prefs.getString("lg_cert_pin", null)
+        set(v) = prefs.edit().putString("lg_cert_pin", v).apply()
+
     var lgClientKey: String?
         get() = prefs.getString("lg_client_key", null)
         set(v) = prefs.edit().putString("lg_client_key", v).apply()

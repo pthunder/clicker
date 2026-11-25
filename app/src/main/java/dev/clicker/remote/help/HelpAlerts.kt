@@ -46,6 +46,13 @@ class HelpAlerts(context: Context, private val scope: CoroutineScope) {
     val alert: StateFlow<Alert?> = _alert
     private var watching: Job? = null
 
+    /** Bumped for every send or cancel; work from an older request never touches the current one. */
+    @Volatile private var generation = 0
+
+    private fun updateIf(gen: Int, change: (Alert) -> Alert) {
+        _alert.update { current -> if (gen == generation && current != null) change(current) else current }
+    }
+
     var appToken: String?
         get() = prefs.getString("token", null)
         set(v) = prefs.edit().putString("token", v?.trim()?.takeIf { it.isNotEmpty() }).apply()
@@ -96,25 +103,29 @@ class HelpAlerts(context: Context, private val scope: CoroutineScope) {
             return
         }
         watching?.cancel()
-        _alert.value?.receipt?.let { cancelReceipt(it) }
+        _alert.value?.receipt?.let { cancelReceipt(it, token) }
+        val gen = ++generation
         _alert.value = Alert(text, Stage.SENDING)
         watching = scope.launch(Dispatchers.IO) {
             val receipt = try {
                 post(token, user, text, urgent)
             } catch (e: Exception) {
                 Log.w(TAG, "help alert failed", e)
-                _alert.update { it?.copy(stage = Stage.FAILED, error = "Couldn't send. Is the remote on Wi-Fi?") }
+                updateIf(gen) { it.copy(stage = Stage.FAILED, error = "Couldn't send. Is the remote on Wi-Fi?") }
                 return@launch
             }
-            _alert.update { it?.copy(stage = Stage.WAITING, receipt = receipt) }
-            watchReceipt(token, receipt)
+            // Replaced or cancelled while it was sending: stop this one ringing too.
+            if (gen != generation) { cancelReceipt(receipt, token); return@launch }
+            updateIf(gen) { it.copy(stage = Stage.WAITING, receipt = receipt) }
+            watchReceipt(token, receipt, gen)
         }
     }
 
     /** Stops the phone alerting (for example, when the request was sent by mistake). */
     fun cancel() {
+        generation++ // a send still in flight cancels its own receipt when it returns
         watching?.cancel()
-        _alert.value?.receipt?.let { cancelReceipt(it) }
+        _alert.value?.receipt?.let { cancelReceipt(it, appToken ?: return@let) }
         _alert.update { it?.copy(stage = Stage.CANCELLED) }
     }
 
@@ -146,7 +157,7 @@ class HelpAlerts(context: Context, private val scope: CoroutineScope) {
     }
 
     /** Checks every 10 seconds whether the alert was acknowledged, until it is or it expires. */
-    private suspend fun watchReceipt(token: String, receipt: String) {
+    private suspend fun watchReceipt(token: String, receipt: String, gen: Int) {
         while (true) {
             delay(10_000)
             val status = runCatching {
@@ -155,8 +166,8 @@ class HelpAlerts(context: Context, private val scope: CoroutineScope) {
                 }
             }.getOrNull() ?: continue
             if (status.optInt("acknowledged") == 1) {
-                _alert.update {
-                    it?.copy(
+                updateIf(gen) {
+                    it.copy(
                         stage = Stage.SEEN,
                         seenAt = status.optLong("acknowledged_at") * 1000,
                         seenOn = status.optString("acknowledged_by_device").takeIf { d -> d.isNotEmpty() },
@@ -165,14 +176,13 @@ class HelpAlerts(context: Context, private val scope: CoroutineScope) {
                 return
             }
             if (status.optInt("expired") == 1) {
-                _alert.update { it?.copy(stage = Stage.EXPIRED) }
+                updateIf(gen) { it.copy(stage = Stage.EXPIRED) }
                 return
             }
         }
     }
 
-    private fun cancelReceipt(receipt: String) {
-        val token = appToken ?: return
+    private fun cancelReceipt(receipt: String, token: String) {
         scope.launch(Dispatchers.IO) {
             runCatching {
                 val body = FormBody.Builder().add("token", token).build()

@@ -138,6 +138,7 @@ class RemoteController(app: Application) : AndroidViewModel(app) {
 
     /** Connects any configured device that isn't connected. Called whenever the remote wakes up. */
     fun reconnect() = background("reconnect") {
+        shows.importPending() // retries a list that couldn't be fully imported while offline
         shows.refreshIfStale()
         if (settings.atvCredentials != null && settings.atvHost.isNotEmpty() && atv?.isConnected != true) {
             runCatching { appleTv() }.onFailure { Log.w(TAG, "Apple TV: $it") }
@@ -151,7 +152,7 @@ class RemoteController(app: Application) : AndroidViewModel(app) {
         onDisconnected = { _state.update { if (it.atv == LinkState.CONNECTED) it.copy(atv = LinkState.OFFLINE) else it } }
     }
 
-    private fun newLgTv() = WebOsClient(settings.lgHost, registration).apply {
+    private fun newLgTv() = WebOsClient(settings.lgHost, registration, settings.lgCertPin).apply {
         onDisconnected = { _state.update { if (it.lg == LinkState.CONNECTED) it.copy(lg = LinkState.OFFLINE) else it } }
     }
 
@@ -205,6 +206,8 @@ class RemoteController(app: Application) : AndroidViewModel(app) {
             val client = lg ?: newLgTv().also { lg = it }
             val key = client.connect(settings.lgClientKey) { say("Accept the prompt on the TV") }
             if (key != settings.lgClientKey) settings.lgClientKey = key
+            // Pin the TV's certificate the first time it pairs (trust on first use).
+            if (settings.lgCertPin == null) client.seenCertificate?.let { settings.lgCertPin = it }
             if (settings.lgMac == null) runCatching { client.macAddresses().firstOrNull()?.let { settings.lgMac = it } }
             _state.update { it.copy(lg = LinkState.CONNECTED, message = null) }
             if (_state.value.artwork.size < DEFAULT_SHORTCUTS.size) fetchArtworkLater()
@@ -226,9 +229,16 @@ class RemoteController(app: Application) : AndroidViewModel(app) {
     }
 
     /** Runs an LG command over Wi-Fi; if the TV can't be reached, sends [irFallback] instead. */
-    private suspend fun withLg(irFallback: IrSignal?, block: suspend (WebOsClient) -> Unit) {
+    /**
+     * Runs an LG command over Wi-Fi, sending [irFallback] instead if the TV can't be reached. If
+     * the command itself fails after connecting, the TV may already have applied it, so IR is
+     * only used then when [retryWithIr] says repeating it is harmless (not for toggles like mute).
+     */
+    private suspend fun withLg(irFallback: IrSignal?, retryWithIr: Boolean = true, block: suspend (WebOsClient) -> Unit) {
         val client = try {
             lgTv()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             if (irFallback != null && ir.available) {
                 ir.send(irFallback)
@@ -238,15 +248,27 @@ class RemoteController(app: Application) : AndroidViewModel(app) {
         }
         try {
             block(client)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
-            if (irFallback != null && ir.available) ir.send(irFallback) else throw e
+            if (retryWithIr && irFallback != null && ir.available) ir.send(irFallback) else throw e
         }
     }
 
     /** Queues an icon download for shortcuts that have none yet: Apple TV first, then the LG. */
-    private fun fetchArtworkLater() = background("artwork") {
+    private val artworkFetching = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    /** Downloads missing icons beside the command queue, so buttons never wait behind downloads. */
+    private fun fetchArtworkLater() {
+        if (!artworkFetching.compareAndSet(false, true)) return
+        viewModelScope.launch(Dispatchers.IO) {
+            try { fetchArtwork() } catch (e: Exception) { Log.w(TAG, "artwork: $e") } finally { artworkFetching.set(false) }
+        }
+    }
+
+    private suspend fun fetchArtwork() {
         val missing = DEFAULT_SHORTCUTS.filter { it.label !in _state.value.artwork }
-        if (missing.isEmpty()) return@background
+        if (missing.isEmpty()) return
         val found = mutableMapOf<String, String>()
         atv?.takeIf { it.isConnected }?.let { client ->
             if (atvApps.isEmpty()) atvApps = runCatching { client.apps() }.getOrDefault(emptyMap())
@@ -330,6 +352,12 @@ class RemoteController(app: Application) : AndroidViewModel(app) {
     private var volumeWatchdog: Job? = null
     private var heldVolumeCommand: HidCommand? = null
 
+    /** Lets go of any held volume key, e.g. when the app goes to the background. */
+    fun releaseVolume() {
+        heldVolumeCommand?.let { volumeHold(if (it == HidCommand.VolumeUp) 1 else -1, down = false) }
+        volumeRepeat?.cancel()
+    }
+
     /** Call with down=true when a volume key or button is pressed and down=false on release. */
     fun volumeHold(direction: Int, down: Boolean) {
         when (_state.value.volumeTarget) {
@@ -345,7 +373,11 @@ class RemoteController(app: Application) : AndroidViewModel(app) {
                     val held = heldVolumeCommand ?: return
                     heldVolumeCommand = null
                     volumeWatchdog?.cancel()
-                    background("volume release") { withAtv { it.hid(held, down = false) } }
+                    // The release must never be dropped (a full queue would leave the key held), so
+                    // wait for room in the queue rather than giving up.
+                    viewModelScope.launch {
+                        queue.send(Queued("volume release", false) { withAtv { it.hid(held, down = false) } })
+                    }
                 }
             }
             VolumeTarget.LG_TV, VolumeTarget.SOUNDBAR_IR -> {
@@ -380,7 +412,7 @@ class RemoteController(app: Application) : AndroidViewModel(app) {
      */
     fun mute() = run("mute") {
         when (_state.value.volumeTarget) {
-            VolumeTarget.LG_TV -> withLg(IrCodes.LgTv.mute) { it.setMute(!it.isMuted()) }
+            VolumeTarget.LG_TV -> withLg(IrCodes.LgTv.mute, retryWithIr = false) { it.setMute(!it.isMuted()) }
             VolumeTarget.APPLE_TV, VolumeTarget.SOUNDBAR_IR -> {
                 if (!ir.available) throw IllegalStateException("No IR emitter on this device")
                 ir.send(IrCodes.DenonSoundbar.mute)
@@ -487,6 +519,22 @@ class RemoteController(app: Application) : AndroidViewModel(app) {
         launch(app)
     }
 
+    /**
+     * Runs a change (such as marking a show watched) on the app's own scope, so closing the
+     * screen or dialog that started it can't cancel it halfway.
+     */
+    fun work(block: suspend () -> Unit) {
+        viewModelScope.launch {
+            try {
+                block()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                say(e.message ?: "That didn't work")
+            }
+        }
+    }
+
     /** Shows a short message under the main screen. */
     fun notify(text: String) = say(text)
 
@@ -585,6 +633,7 @@ class RemoteController(app: Application) : AndroidViewModel(app) {
         if (host.trim() == settings.lgHost) return
         settings.lgHost = host
         settings.lgClientKey = null
+        settings.lgCertPin = null
         settings.lgMac = null
         lg?.close(); lg = null
         lgApps = emptyList()
@@ -594,6 +643,12 @@ class RemoteController(app: Application) : AndroidViewModel(app) {
     fun connectLg() = background("connect LG TV") {
         _state.update { it.copy(busy = true) }
         try {
+            // Connecting by hand re-trusts the TV's current certificate (for example after a
+            // TV firmware update replaced it).
+            if (lg?.isConnected != true) {
+                settings.lgCertPin = null
+                lg?.close(); lg = null
+            }
             lgTv()
             say("LG TV connected")
         } finally {

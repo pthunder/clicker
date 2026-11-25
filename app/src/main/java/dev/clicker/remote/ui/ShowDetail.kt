@@ -159,7 +159,7 @@ fun ShowDetail(id: Int, controller: RemoteController, person: String?, people: L
                     item(key = "new-h") { DetailHeader("New to watch (${unwatched.size})", "Tap the circle once you've seen it") }
                     items(unwatched.take(30), key = { "n-${it.season}-${it.number}" }) { ep ->
                         EpisodeRow(ep, watched = false) {
-                            scope.launch { controller.shows.watchedUpTo(followed!!, ep.season, ep.number) }
+                            controller.work { controller.shows.watchedUpTo(followed!!, ep.season, ep.number) }
                         }
                     }
                 }
@@ -188,7 +188,7 @@ fun ShowDetail(id: Int, controller: RemoteController, person: String?, people: L
                         items(earlier.take(60), key = { "e-${it.season}-${it.number}" }) { ep ->
                             EpisodeRow(ep, watched = followed != null) {
                                 // Tapping a watched episode moves the place back to just before it.
-                                if (followed != null) scope.launch { controller.shows.watchedUpTo(followed, ep.season, ep.number - 1) }
+                                if (followed != null) controller.work { controller.shows.watchedUpTo(followed, ep.season, ep.number - 1) }
                             }
                         }
                     }

@@ -282,7 +282,7 @@ internal fun ShowDialog(show: Show, controller: RemoteController, people: List<S
     val scope = rememberCoroutineScope()
     var page by remember { mutableStateOf(DialogPage.MAIN) }
     val app = StreamingApps.appFor(show)
-    val act = { block: suspend () -> Unit -> scope.launch { runCatching { block() }.onFailure { controller.notify(it.message ?: "That didn't work") } }; onDismiss() }
+    val act = { block: suspend () -> Unit -> controller.work(block); onDismiss() }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -324,7 +324,7 @@ internal fun ShowDialog(show: Show, controller: RemoteController, people: List<S
                             // Toggling keeps the dialog open so a show can go on several lists.
                             DialogOption(name, selected = on) {
                                 val next = if (on) show.ownerList.filterNot { it.equals(name, true) } else show.ownerList + name
-                                scope.launch { controller.shows.setOwners(show, next) }
+                                controller.work { controller.shows.setOwners(show, next) }
                             }
                         }
                     }

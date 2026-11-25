@@ -20,6 +20,7 @@ import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 /**
@@ -34,6 +35,10 @@ class ShowStore(context: Context, private val scope: CoroutineScope) {
     private val posters = File(app.filesDir, "posters").apply { mkdirs() }
     private val prefs = app.getSharedPreferences("shows", Context.MODE_PRIVATE)
     private val refreshing = Mutex()
+    /** Every write to the list goes through this, rereading the row first, so a refresh can't undo an edit or bring back a show that was just removed. */
+    private val writes = Mutex()
+    private val backups = Mutex()
+    private val importing = Mutex()
     private val appleTv = AppleTvLinks(app, http)
 
     val shows: Flow<List<Show>> = dao.all()
@@ -73,50 +78,48 @@ class ShowStore(context: Context, private val scope: CoroutineScope) {
 
     /** Follows a show. By default the household is taken to be caught up, the usual case. */
     suspend fun follow(found: TvMaze.Found, caughtUp: Boolean = true, owner: String? = null) = withContext(Dispatchers.IO) {
-        val existing = dao.get(found.id)
         val fresh = runCatching { api.details(found.id) }.getOrNull()
-        var show = (existing ?: Show(id = found.id, name = found.name)).let { s -> fresh?.let { merge(s, it) } ?: s }
-        if (existing == null && caughtUp) show = show.copy(watchedSeason = show.lastSeason, watchedEpisode = show.lastEpisode)
-        if (owner != null && (existing == null || existing.ownerList.isNotEmpty())) {
-            show = show.copy(owners = Show.joinOwners(show.ownerList + owner))
+        writes.withLock {
+            val existing = dao.get(found.id)
+            var show = (existing ?: Show(id = found.id, name = found.name)).let { s -> fresh?.let { merge(s, it) } ?: s }
+            if (existing == null && caughtUp) show = show.copy(watchedSeason = show.lastSeason, watchedEpisode = show.lastEpisode)
+            if (owner != null && (existing == null || existing.ownerList.isNotEmpty())) {
+                show = show.copy(owners = Show.joinOwners(show.ownerList + owner))
+            }
+            dao.upsert(show)
         }
-        dao.upsert(show)
         changed()
     }
 
     suspend fun unfollow(show: Show) = withContext(Dispatchers.IO) {
-        dao.delete(show.id)
+        writes.withLock { dao.delete(show.id) }
         File(posters, "${show.id}.jpg").delete()
         changed()
     }
 
     // ---- Household changes ---------------------------------------------------------------------
 
-    suspend fun caughtUp(show: Show) = save(show.copy(watchedSeason = show.lastSeason, watchedEpisode = show.lastEpisode))
+    suspend fun caughtUp(show: Show) = edit(show) { it.copy(watchedSeason = it.lastSeason, watchedEpisode = it.lastEpisode) }
 
-    suspend fun notStarted(show: Show) = save(show.copy(watchedSeason = 0, watchedEpisode = 0))
+    suspend fun notStarted(show: Show) = edit(show) { it.copy(watchedSeason = 0, watchedEpisode = 0) }
 
     /** Marks every episode up to the end of [season] as watched. */
-    suspend fun finishedSeason(show: Show, season: Int) = save(show.copy(watchedSeason = season, watchedEpisode = Show.WHOLE_SEASON))
+    suspend fun finishedSeason(show: Show, season: Int) = edit(show) { it.copy(watchedSeason = season, watchedEpisode = Show.WHOLE_SEASON) }
 
-    suspend fun snooze(show: Show, mode: SnoozeMode, untilMs: Long? = null) = save(
-        show.copy(
-            snoozeMode = mode.name,
-            snoozeUntil = untilMs,
-            snoozeSeason = maxOf(show.lastSeason, show.nextSeason),
-        ),
-    )
+    suspend fun snooze(show: Show, mode: SnoozeMode, untilMs: Long? = null) = edit(show) {
+        it.copy(snoozeMode = mode.name, snoozeUntil = untilMs, snoozeSeason = maxOf(it.lastSeason, it.nextSeason))
+    }
 
-    suspend fun wake(show: Show) = save(show.copy(snoozeMode = null, snoozeUntil = null, snoozeSeason = 0))
+    suspend fun wake(show: Show) = edit(show) { it.copy(snoozeMode = null, snoozeUntil = null, snoozeSeason = 0) }
 
-    suspend fun setApp(show: Show, label: String?) = save(show.copy(appOverride = label))
+    suspend fun setApp(show: Show, label: String?) = edit(show) { it.copy(appOverride = label) }
 
     /** Puts a show on these people's lists; an empty list means everyone's. */
-    suspend fun setOwners(show: Show, names: Collection<String>) = save(show.copy(owners = Show.joinOwners(names)))
+    suspend fun setOwners(show: Show, names: Collection<String>) = edit(show) { it.copy(owners = Show.joinOwners(names)) }
 
     /** Marks every episode up to and including this one as watched. */
     suspend fun watchedUpTo(show: Show, season: Int, episode: Int) =
-        save(show.copy(watchedSeason = season, watchedEpisode = episode))
+        edit(show) { it.copy(watchedSeason = season, watchedEpisode = episode) }
 
     private val detailCache = mutableMapOf<Int, Pair<Long, TvMaze.Details>>()
 
@@ -150,9 +153,14 @@ class ShowStore(context: Context, private val scope: CoroutineScope) {
         runCatching { api.seasons(show.id) }.getOrDefault(emptyList())
     }
 
-    private suspend fun save(show: Show) = withContext(Dispatchers.IO) {
-        dao.upsert(show)
-        changed()
+    /** Applies [change] to the stored row (not the caller's copy), if the show is still followed. */
+    private suspend fun edit(show: Show, change: (Show) -> Show) = withContext(Dispatchers.IO) {
+        val changedRow = writes.withLock {
+            val current = dao.get(show.id) ?: return@withLock false
+            dao.upsert(change(current))
+            true
+        }
+        if (changedRow) changed()
     }
 
     // ---- Keeping air dates fresh ---------------------------------------------------------------
@@ -173,14 +181,20 @@ class ShowStore(context: Context, private val scope: CoroutineScope) {
      * full refresh is overdue. Called whenever the remote wakes up.
      */
     fun refreshIfStale() = scope.launch(Dispatchers.IO) {
-        // A list waiting to be imported fetches its own details; refreshing first would race it.
-        if (File(app.getExternalFilesDir(null), "import-shows.json").isFile) return@launch
+        if (importWaiting()) return@launch
         val overdue = System.currentTimeMillis() - prefs.getLong("refreshedAt", 0) > REFRESH_EVERY_MS
         if (overdue || dao.list().any { it.refreshedAt == 0L }) refreshAll()
     }
 
     /** Fetches the latest air dates for every show, paced to stay within TVmaze's limits. */
-    suspend fun refreshAll() = withContext(Dispatchers.IO) {
+    /**
+     * True while a list file is waiting to be imported. Refreshing then would give its shows air
+     * dates without their "caught up" position, and the import would no longer fix them.
+     */
+    private fun importWaiting() = File(app.getExternalFilesDir(null), "import-shows.json").isFile
+
+    suspend fun refreshAll(force: Boolean = false) = withContext(Dispatchers.IO) {
+        if (!force && importWaiting()) return@withContext
         if (!refreshing.tryLock()) return@withContext
         try {
             var failures = 0
@@ -190,8 +204,10 @@ class ShowStore(context: Context, private val scope: CoroutineScope) {
                 if (inARow >= 3) { failures++; continue } // offline: try again on the next wake or hour
                 runCatching { api.details(show.id) }
                     .onSuccess { fresh ->
-                        val current = dao.get(show.id) ?: return@onSuccess // unfollowed meanwhile
-                        dao.upsert(clearMetSnooze(merge(current, fresh)))
+                        writes.withLock {
+                            val current = dao.get(show.id) ?: return@withLock // unfollowed meanwhile
+                            dao.upsert(clearMetSnooze(merge(current, fresh)))
+                        }
                         inARow = 0
                     }
                     .onFailure { failures++; inARow++; Log.w(TAG, "refresh ${show.name}: $it") }
@@ -267,7 +283,9 @@ class ShowStore(context: Context, private val scope: CoroutineScope) {
         scope.launch(Dispatchers.IO) { runCatching { backup() }.onFailure { Log.w(TAG, "backup failed", it) } }
     }
 
-    private suspend fun backup() {
+    private suspend fun backup() = backups.withLock { writeBackup() }
+
+    private suspend fun writeBackup() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return // shared Documents needs Android 10+
         val json = toBackupJson(dao.list())
         val resolver = app.contentResolver
@@ -308,11 +326,15 @@ class ShowStore(context: Context, private val scope: CoroutineScope) {
             f.delete()
         }
         val file = File(app.getExternalFilesDir(null) ?: return@launch, "import-shows.json")
-        if (!file.isFile) return@launch
-        runCatching { importText(file.readText()) }
-            .onSuccess { Log.w(TAG, "imported $it shows from ${file.name}") }
-            .onFailure { Log.w(TAG, "import failed", it) }
-        file.delete()
+        if (!file.isFile || !importing.tryLock()) return@launch // one import at a time
+        try {
+            // The file is deleted only after a complete import, so a failed one is retried later.
+            runCatching { importText(file.readText()) }
+                .onSuccess { Log.w(TAG, "imported $it shows from ${file.name}"); file.delete() }
+                .onFailure { Log.w(TAG, "import incomplete, keeping ${file.name}", it) }
+        } finally {
+            importing.unlock()
+        }
     }
 
     /**
@@ -325,11 +347,12 @@ class ShowStore(context: Context, private val scope: CoroutineScope) {
         // Optional: "caught up" means up to episodes that aired before this date, so anything newer
         // shows as new. Lets a fresh list start with last week's episodes waiting.
         val before = JSONObject(text).optString("caughtUpBefore").takeIf { it.isNotEmpty() }
+        var missingDetails = 0
         for (show in restored) {
             val stored = dao.get(show.id)
             // A show imported while offline never got its details; import it again properly.
             val existing = stored?.takeIf { it.refreshedAt != 0L || show.id !in caughtUp }
-            if (existing != null) {
+            if (existing != null) writes.withLock {
                 dao.upsert(
                     existing.copy(
                         watchedSeason = if (show.id in caughtUp) existing.watchedSeason else show.watchedSeason,
@@ -341,11 +364,11 @@ class ShowStore(context: Context, private val scope: CoroutineScope) {
                         else Show.joinOwners(existing.ownerList + show.ownerList),
                     ),
                 )
-                continue
             }
+            if (existing != null) continue
             var added = stored?.copy(owners = show.owners, appOverride = show.appOverride ?: stored.appOverride) ?: show
             if (show.id in caughtUp) {
-                runCatching { api.details(show.id, withEpisodes = before != null) }.onSuccess { fresh ->
+                runCatching { api.details(show.id, withEpisodes = before != null) }.onFailure { missingDetails++ }.onSuccess { fresh ->
                     val merged = merge(added, fresh)
                     val (season, episode) = if (before != null) lastAiredBefore(fresh.episodes, before)
                     else merged.lastSeason to merged.lastEpisode
@@ -353,10 +376,12 @@ class ShowStore(context: Context, private val scope: CoroutineScope) {
                 }
                 delay(600) // stay within TVmaze's request limit
             }
-            dao.upsert(added)
+            writes.withLock { dao.upsert(added) }
         }
         changed()
-        scope.launch { refreshAll() }
+        if (missingDetails == 0) scope.launch { refreshAll(force = true) }
+        // Shows that couldn't be looked up (offline) are imported again, properly, next time.
+        if (missingDetails > 0) throw IOException("$missingDetails shows couldn't be looked up; will retry")
         return restored.size
     }
 
