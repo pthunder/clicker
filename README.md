@@ -53,6 +53,8 @@ The bottom bar switches between four pages; the gear opens Settings.
   phone until they acknowledge it, then show "seen at 2:41" on the remote. One tap starts a
   3-second countdown with Cancel. Urgent requests (a line starting with `!`, such as
   `!Air machine`) get a full-width red button, a siren sound and longer repeats.
+- **Charging**: plugging the remote in plays a short 3D animation of a glass battery filling to the
+  current charge (green, amber or red by level). Tap to dismiss.
 - **Settings** (gear): find and pair devices, what the volume buttons control, the TMDB token,
   help alert keys and buttons, show list backup and restore, IR tests, the key tester, and an
   optional personal background.

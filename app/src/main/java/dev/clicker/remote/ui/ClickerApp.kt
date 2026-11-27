@@ -58,8 +58,10 @@ fun ClickerApp(
     var lastTapAt by remember { mutableStateOf(0L) }
     val playIntro = video != null && !introDone && (state.background == BackgroundMode.VIDEO || requested)
     val finishIntro = { introDone = true; requested = false }
+    val charge = rememberChargeWatch()
 
     MaterialTheme(colorScheme = colors) {
+        Box(Modifier.fillMaxSize()) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             if (showSettings) {
                 SettingsScreen(controller, lastKey, onBack = { onShowSettings(false) })
@@ -95,6 +97,9 @@ fun ClickerApp(
                     }
                 }
             }
+        }
+        // Plays over everything when a charger is connected.
+        ChargingOverlay(charge)
         }
     }
 }
